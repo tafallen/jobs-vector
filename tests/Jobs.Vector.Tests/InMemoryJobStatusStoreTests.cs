@@ -184,5 +184,41 @@ public class InMemoryJobStatusStoreTests
 
         Assert.Equal(2, store.EntryCount);
     }
+
+    [Fact]
+    public void GetValue_TypedMetadata_ReturnsTypedValue()
+    {
+        var store = new InMemoryJobStatusStore();
+        store.SetStatus("job1", JobStatus.Processing);
+
+        store.SetMetadata("job1", new Dictionary<string, object>
+        {
+            ["boolVal"] = true,
+            ["doubleVal"] = 123.45,
+            ["stringVal"] = "hello"
+        });
+
+        var snapshot = store.GetStatus("job1")!;
+        Assert.True(snapshot.GetValue<bool>("boolVal"));
+        Assert.Equal(123.45, snapshot.GetValue<double>("doubleVal"));
+        Assert.Equal("hello", snapshot.GetValue<string>("stringVal"));
+    }
+
+    [Fact]
+    public void GetValue_UnknownKeyOrWrongType_ReturnsDefault()
+    {
+        var store = new InMemoryJobStatusStore();
+        store.SetStatus("job1", JobStatus.Processing);
+
+        store.SetMetadata("job1", new Dictionary<string, object>
+        {
+            ["boolVal"] = true
+        });
+
+        var snapshot = store.GetStatus("job1")!;
+        Assert.False(snapshot.GetValue<bool>("nonexistentKey"));
+        Assert.Null(snapshot.GetValue<string>("boolVal")); // wrong type
+    }
 }
+
 

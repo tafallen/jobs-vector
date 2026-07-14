@@ -9,7 +9,7 @@
 
     <!-- NuGet Package Metadata -->
     <PackageId>Jobs.Vector</PackageId>
-    <Version>1.0.0</Version>
+    <Version>1.0.1</Version>
     <Authors>Tim Allen</Authors>
     <Company>tafallen</Company>
     <Product>Jobs.Vector</Product>

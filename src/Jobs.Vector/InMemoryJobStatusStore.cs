@@ -1,8 +1,12 @@
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using Microsoft.Extensions.Options;
 
 namespace Jobs.Vector;
 
+/// <summary>
+/// An in-memory, thread-safe implementation of <see cref="IJobStatusStore"/> backed by a <see cref="ConcurrentDictionary{TKey, TValue}"/>.
+/// </summary>
 public class InMemoryJobStatusStore : IJobStatusStore
 {
     private static readonly IReadOnlyDictionary<string, object> EmptyMetadata = new Dictionary<string, object>();
@@ -13,19 +17,26 @@ public class InMemoryJobStatusStore : IJobStatusStore
     private readonly TimeProvider _timeProvider;
     private readonly TimeSpan _retention;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="InMemoryJobStatusStore"/> class.
+    /// </summary>
+    /// <param name="timeProvider">The provider used to obtain the current time.</param>
+    /// <param name="options">The configuration options for background jobs.</param>
     public InMemoryJobStatusStore(TimeProvider timeProvider, IOptions<JobsOptions> options)
     {
         _timeProvider = timeProvider;
         _retention = options.Value.StatusRetention;
     }
 
-    // Convenience constructor for unit tests that do not exercise TTL: system clock,
-    // default retention window.
+    /// <summary>
+    /// Initializes a new instance of the <see cref="InMemoryJobStatusStore"/> class with system defaults (primarily for unit tests).
+    /// </summary>
     public InMemoryJobStatusStore()
         : this(TimeProvider.System, Options.Create(new JobsOptions()))
     {
     }
 
+    /// <inheritdoc />
     public void SetStatus(string jobId, JobStatus status, int progress = 0, string? error = null)
     {
         _entries.AddOrUpdate(
@@ -36,6 +47,7 @@ public class InMemoryJobStatusStore : IJobStatusStore
                 _timeProvider.GetUtcNow()));
     }
 
+    /// <inheritdoc />
     public void SetMetadata(string jobId, IReadOnlyDictionary<string, object> metadata)
     {
         _entries.AddOrUpdate(
@@ -59,6 +71,7 @@ public class InMemoryJobStatusStore : IJobStatusStore
         return merged;
     }
 
+    /// <inheritdoc />
     public JobStatusSnapshot? GetStatus(string jobId)
     {
         if (!_entries.TryGetValue(jobId, out var entry))
@@ -68,13 +81,15 @@ public class InMemoryJobStatusStore : IJobStatusStore
 
         if (_timeProvider.GetUtcNow() - entry.UpdatedAt > _retention)
         {
-            _entries.TryRemove(jobId, out _);
+            // Use the TryRemove(KeyValuePair) overload to avoid removing a newly updated entry for the same jobId
+            _entries.TryRemove(KeyValuePair.Create(jobId, entry));
             return null;
         }
 
         return entry.Snapshot;
     }
 
+    /// <inheritdoc />
     public void PruneExpired()
     {
         var now = _timeProvider.GetUtcNow();
@@ -82,13 +97,15 @@ public class InMemoryJobStatusStore : IJobStatusStore
         {
             if (now - entry.UpdatedAt > _retention)
             {
-                _entries.TryRemove(jobId, out _);
+                // Use the TryRemove(KeyValuePair) overload to avoid removing a newly updated entry for the same jobId
+                _entries.TryRemove(KeyValuePair.Create(jobId, entry));
             }
         }
     }
 
-    // Test/diagnostic-only: not part of IJobStatusStore, exposes the live entry count without
-    // triggering GetStatus's own lazy eviction (which would make a "did PruneExpired do this"
-    // test ambiguous).
+    /// <summary>
+    /// Gets the count of active status entries currently in the store. Primarily for diagnostic or testing purposes.
+    /// </summary>
     public int EntryCount => _entries.Count;
 }
+

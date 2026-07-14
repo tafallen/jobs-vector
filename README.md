@@ -1,8 +1,117 @@
 # Jobs.Vector
 
-A lightweight, portable .NET 8 background job queue and worker hosting service built on standard .NET primitives (`System.Threading.Channels` and `BackgroundService`). 
+A portable **.NET 8** background job queue and worker hosting service built on standard .NET primitives (`System.Threading.Channels` and `BackgroundService`).
 
 It processes CPU-intensive and long-running operations asynchronously using bounded channels for backpressure, supports multi-threaded concurrent execution loops, and offers a thread-safe in-memory job status store with configurable time-to-live (TTL) eviction.
+
+[![CI](https://github.com/tafallen/jobs-vector/actions/workflows/ci.yml/badge.svg)](https://github.com/tafallen/jobs-vector/actions/workflows/ci.yml)
+[![NuGet](https://img.shields.io/nuget/v/Jobs.Vector)](https://www.nuget.org/packages/Jobs.Vector)
+[![License: PolyForm Noncommercial](https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue)](LICENSE)
+
+---
+
+## Features
+
+- ⚡ **Bounded backpressure** — utilizes `System.Threading.Channels` with bounded capacity to block the enqueuing thread and prevent uncontrolled heap growth
+- 👯 **Multi-threaded execution loops** — spawns configurable multiple concurrent background Task execution loops polling the channel
+- 🔒 **Thread-safe job status cache** — in-memory `ConcurrentDictionary` store tracking job outcomes and progress safely
+- 🧹 **Automatic TTL cleanup** — active background pruning and lazy-eviction to purge expired job status entries
+- 📦 **NuGet-ready** — structured for `dotnet pack` with symbols (`.snupkg`)
+- 💉 **DI-friendly** — integrates with `Microsoft.Extensions.DependencyInjection` via `AddBackgroundJobs()`
+- 🛡️ **No app-specific dependencies** — relies only on standard .NET primitives; no databases or ORMs required
+
+---
+
+## Quick Start
+
+### Install
+
+```bash
+dotnet add package Jobs.Vector
+```
+
+### Register with Dependency Injection
+
+To register the background job services:
+```csharp
+// Program.cs / Startup.cs
+builder.Services.AddBackgroundJobs(builder.Configuration);
+```
+
+Configure via `appsettings.json`:
+```json
+{
+  "Jobs": {
+    "Workers": 2,
+    "QueueCapacity": 100,
+    "StatusRetention": "00:30:00",
+    "SweepInterval": "00:01:00"
+  }
+}
+```
+
+### Enqueuing a Job
+
+Inject `IBackgroundJobQueue` and enqueue an asynchronous task closure:
+```csharp
+public class IngestionController(IBackgroundJobQueue jobQueue, IJobStatusStore statusStore)
+{
+    public async Task StartIngestionAsync(string fileId, CancellationToken ct)
+    {
+        string jobId = Guid.NewGuid().ToString();
+
+        // Enqueue job delegate containing processing task context
+        await jobQueue.EnqueueAsync(async (jobCt) =>
+        {
+            // Simulated work logic
+            await Task.Delay(5000, jobCt);
+            
+            // Set metadata on the status store
+            statusStore.SetMetadata(jobId, new Dictionary<string, object>
+            {
+                ["fileId"] = fileId,
+                ["peopleImported"] = 42,
+                ["eventsImported"] = 99
+            });
+        }, jobId, ct);
+    }
+}
+```
+
+### Polling Job Status
+
+Query the status store using the unique `JobId`:
+```csharp
+public JobStatusSnapshot? GetJobStatus(string jobId)
+{
+    return statusStore.GetStatus(jobId);
+}
+```
+
+### Without DI (direct use)
+
+```csharp
+using Microsoft.Extensions.Options;
+using Jobs.Vector;
+
+var options = Options.Create(new JobsOptions
+{
+    Workers = 1,
+    QueueCapacity = 10,
+    StatusRetention = TimeSpan.FromMinutes(5)
+});
+
+var timeProvider = TimeProvider.System;
+var statusStore = new InMemoryJobStatusStore(timeProvider, options);
+var jobQueue = new BackgroundJobQueue(statusStore, options);
+
+// Enqueue a job directly
+string jobId = Guid.NewGuid().ToString();
+await jobQueue.EnqueueAsync(async (ct) =>
+{
+    await Task.Delay(1000, ct);
+}, jobId);
+```
 
 ---
 
@@ -20,77 +129,8 @@ On application startup, `BackgroundJobWorker` reads the configured worker count 
 
 ### 3. Thread-Safe Status Store with TTL Pruning
 `InMemoryJobStatusStore` uses a `ConcurrentDictionary` to cache job outcomes. To prevent memory leaks, jobs have an associated TTL retention window:
-*   **Lazy Eviction:** Calling `GetStatus(jobId)` checks the timestamp; if the job has expired, it is removed immediately.
-*   **Active Cleanup:** `JobStatusSweepWorker` runs a background task that sweeps the dictionary and removes expired entries every minute.
-
----
-
-## How to Use
-
-### 1. Registering the Background Services
-Bind configuration options and register workers:
-
-```csharp
-using Jobs.Vector;
-
-// Registers IBackgroundJobQueue, IJobStatusStore, and starts the BackgroundJobWorker & JobStatusSweepWorker
-builder.Services.AddBackgroundJobs(builder.Configuration);
-```
-
-Configure via `appsettings.json`:
-```json
-{
-  "Jobs": {
-    "Workers": 2,
-    "QueueCapacity": 100,
-    "StatusRetention": "00:30:00"
-  }
-}
-```
-
-### 2. Enqueuing a Job
-Inject `IBackgroundJobQueue` and enqueue an asynchronous task closure:
-
-```csharp
-using Jobs.Vector;
-
-public class IngestionController
-{
-    private readonly IBackgroundJobQueue _jobQueue;
-    private readonly IJobStatusStore _statusStore;
-
-    public IngestionController(IBackgroundJobQueue jobQueue, IJobStatusStore statusStore)
-    {
-        _jobQueue = jobQueue;
-        _statusStore = statusStore;
-    }
-
-    public async Task StartIngestion(string fileId, CancellationToken ct)
-    {
-        string jobId = Guid.NewGuid().ToString();
-
-        // Enqueue job delegate containing processing task context
-        await _jobQueue.EnqueueAsync(async (jobCt) =>
-        {
-            // Simulated work logic
-            await Task.Delay(5000, jobCt);
-            _statusStore.SetImportResult(jobId, peopleImported: 42, eventsImported: 99);
-        }, jobId, ct);
-    }
-}
-```
-
-### 3. Polling Job Status
-Query the status store using the unique `JobId`:
-
-```csharp
-using Jobs.Vector;
-
-public JobStatusSnapshot? GetJobStatus(string jobId)
-{
-    return _statusStore.GetStatus(jobId);
-}
-```
+*   **Lazy Eviction:** Calling `GetStatus(jobId)` checks the timestamp; if the job has expired, it is removed immediately using atomic operations.
+*   **Active Cleanup:** `JobStatusSweepWorker` runs a background task that sweeps the dictionary and removes expired entries periodically.
 
 ---
 

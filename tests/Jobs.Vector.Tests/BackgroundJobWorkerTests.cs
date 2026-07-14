@@ -47,7 +47,7 @@ public class BackgroundJobWorkerTests
     public async Task ExecuteAsync_JobSucceeds_SetsStatusToCompleted()
     {
         var statusStore = new InMemoryJobStatusStore();
-        var queue = new BackgroundJobQueue(statusStore, Options.Create(new JobsOptions()));
+        var queue = new BackgroundJobQueue(statusStore, Options.Create(new JobsOptions()), NullLogger<BackgroundJobQueue>.Instance);
         var options = Options.Create(new JobsOptions { Workers = 1 });
         var worker = new BackgroundJobWorker(queue, statusStore, options, NullLogger<BackgroundJobWorker>.Instance);
 
@@ -72,7 +72,7 @@ public class BackgroundJobWorkerTests
     public async Task ExecuteAsync_JobThrows_SetsFailedWithMessageAndKeepsProcessingNextJob()
     {
         var statusStore = new InMemoryJobStatusStore();
-        var queue = new BackgroundJobQueue(statusStore, Options.Create(new JobsOptions()));
+        var queue = new BackgroundJobQueue(statusStore, Options.Create(new JobsOptions()), NullLogger<BackgroundJobQueue>.Instance);
         var options = Options.Create(new JobsOptions { Workers = 1 });
         var mockLogger = new Mock<ILogger<BackgroundJobWorker>>();
         var worker = new BackgroundJobWorker(queue, statusStore, options, mockLogger.Object);
@@ -94,9 +94,10 @@ public class BackgroundJobWorkerTests
 
         var failedSnapshot = statusStore.GetStatus("job-fail");
         Assert.Equal(JobStatus.Failed, failedSnapshot!.Status);
-        Assert.Equal("boom", failedSnapshot.Error);
+        Assert.Contains("InvalidOperationException: boom", failedSnapshot.Error);
 
         mockLogger.Verify(
+
             x => x.Log(
                 LogLevel.Error,
                 It.IsAny<EventId>(),
@@ -110,7 +111,7 @@ public class BackgroundJobWorkerTests
     public async Task ExecuteAsync_TwoWorkersConfigured_ProcessesTwoJobsConcurrently()
     {
         var statusStore = new InMemoryJobStatusStore();
-        var queue = new BackgroundJobQueue(statusStore, Options.Create(new JobsOptions()));
+        var queue = new BackgroundJobQueue(statusStore, Options.Create(new JobsOptions()), NullLogger<BackgroundJobQueue>.Instance);
         var options = Options.Create(new JobsOptions { Workers = 2 });
         var worker = new BackgroundJobWorker(queue, statusStore, options, NullLogger<BackgroundJobWorker>.Instance);
 
@@ -149,7 +150,7 @@ public class BackgroundJobWorkerTests
     public async Task StopAsync_JobInFlight_DoesNotLeaveStatusStuckAtProcessing()
     {
         var statusStore = new InMemoryJobStatusStore();
-        var queue = new BackgroundJobQueue(statusStore, Options.Create(new JobsOptions()));
+        var queue = new BackgroundJobQueue(statusStore, Options.Create(new JobsOptions()), NullLogger<BackgroundJobQueue>.Instance);
         var options = Options.Create(new JobsOptions { Workers = 1 });
         var worker = new BackgroundJobWorker(queue, statusStore, options, NullLogger<BackgroundJobWorker>.Instance);
 
@@ -175,7 +176,7 @@ public class BackgroundJobWorkerTests
     public async Task ExecuteAsync_OnStart_LogsWorkerCountAtInformationLevel()
     {
         var statusStore = new InMemoryJobStatusStore();
-        var queue = new BackgroundJobQueue(statusStore, Options.Create(new JobsOptions()));
+        var queue = new BackgroundJobQueue(statusStore, Options.Create(new JobsOptions()), NullLogger<BackgroundJobQueue>.Instance);
         var options = Options.Create(new JobsOptions { Workers = 2 });
         var mockLogger = new Mock<ILogger<BackgroundJobWorker>>();
         var worker = new BackgroundJobWorker(queue, statusStore, options, mockLogger.Object);
@@ -195,10 +196,10 @@ public class BackgroundJobWorkerTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_JobSucceeds_LogsCompletionAtDebugLevel()
+    public async Task ExecuteAsync_JobSucceeds_LogsCompletionAtInformationLevel()
     {
         var statusStore = new InMemoryJobStatusStore();
-        var queue = new BackgroundJobQueue(statusStore, Options.Create(new JobsOptions()));
+        var queue = new BackgroundJobQueue(statusStore, Options.Create(new JobsOptions()), NullLogger<BackgroundJobQueue>.Instance);
         var options = Options.Create(new JobsOptions { Workers = 1 });
         var mockLogger = new Mock<ILogger<BackgroundJobWorker>>();
         var worker = new BackgroundJobWorker(queue, statusStore, options, mockLogger.Object);
@@ -214,12 +215,42 @@ public class BackgroundJobWorkerTests
 
         mockLogger.Verify(
             x => x.Log(
-                LogLevel.Debug,
+                LogLevel.Information,
                 It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((v, t) => true),
+                It.Is<It.IsAnyType>((v, t) => v != null && v.ToString()!.Contains("completed successfully")),
                 null,
                 It.Is<Func<It.IsAnyType, Exception?, string>>((v, t) => true)),
             Times.Once);
     }
+
+    [Fact]
+    public async Task ExecuteAsync_JobSucceeds_RecordsDurationInMetadata()
+    {
+        var statusStore = new InMemoryJobStatusStore();
+        var queue = new BackgroundJobQueue(statusStore, Options.Create(new JobsOptions()), NullLogger<BackgroundJobQueue>.Instance);
+        var options = Options.Create(new JobsOptions { Workers = 1 });
+        var fakeTimeProvider = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+        var worker = new BackgroundJobWorker(queue, statusStore, options, NullLogger<BackgroundJobWorker>.Instance, fakeTimeProvider);
+
+        var jobRan = new TaskCompletionSource();
+        await queue.EnqueueAsync(async ct =>
+        {
+            fakeTimeProvider.Advance(TimeSpan.FromMilliseconds(250));
+            await Task.Yield();
+            jobRan.SetResult();
+        }, "job-duration-test");
+
+        await worker.StartAsync(CancellationToken.None);
+        await jobRan.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitForStatusAsync(statusStore, "job-duration-test", JobStatus.Completed, TimeSpan.FromSeconds(5));
+        await worker.StopAsync(CancellationToken.None);
+
+        var snapshot = statusStore.GetStatus("job-duration-test");
+        Assert.NotNull(snapshot);
+        
+        var durationMs = snapshot!.GetValue<double>("durationMs");
+        Assert.Equal(250, durationMs);
+    }
 }
+
 

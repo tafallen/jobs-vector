@@ -14,6 +14,7 @@ public class JobsServiceCollectionExtensionsTests
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(configValues).Build();
         var services = new ServiceCollection();
+        services.AddLogging();
         services.AddInMemoryJobQueue(configuration);
         return services.BuildServiceProvider();
     }
@@ -66,5 +67,25 @@ public class JobsServiceCollectionExtensionsTests
 
         Assert.Contains(hostedServices, s => s is JobStatusSweepWorker);
     }
+
+    [Fact]
+    public void AddBackgroundJobs_RegistersSameServices()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>()).Build();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddBackgroundJobs(configuration);
+        var provider = services.BuildServiceProvider();
+
+        var queue = provider.GetService<IBackgroundJobQueue>();
+        var store = provider.GetService<IJobStatusStore>();
+        var hostedServices = provider.GetServices<IHostedService>().ToList();
+
+        Assert.NotNull(queue);
+        Assert.NotNull(store);
+        Assert.Contains(hostedServices, s => s is BackgroundJobWorker);
+        Assert.Contains(hostedServices, s => s is JobStatusSweepWorker);
+    }
 }
+
 

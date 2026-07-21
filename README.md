@@ -52,39 +52,48 @@ Configure via `appsettings.json`:
 
 ### Enqueuing a Job
 
-Inject `IBackgroundJobQueue` and enqueue an asynchronous task closure:
+Inject `IBackgroundJobQueue` and enqueue an asynchronous task. You can use standard delegates, `Guid`/`long` job IDs, or state-passing overloads to eliminate heap allocations:
+
 ```csharp
 public class IngestionController(IBackgroundJobQueue jobQueue, IJobStatusStore statusStore)
 {
     public async Task StartIngestionAsync(string fileId, CancellationToken ct)
     {
-        string jobId = Guid.NewGuid().ToString();
+        // 1. Native Guid or long job IDs are supported directly
+        Guid jobId = Guid.NewGuid();
 
-        // Enqueue job delegate containing processing task context
-        await jobQueue.EnqueueAsync(async (jobCt) =>
-        {
-            // Simulated work logic
-            await Task.Delay(5000, jobCt);
-            
-            // Set metadata on the status store
-            statusStore.SetMetadata(jobId, new Dictionary<string, object>
+        // 2. High-performance state-passing overload (0 closure class heap allocations)
+        await jobQueue.EnqueueAsync(
+            static async (fileId, jobCt) =>
             {
-                ["fileId"] = fileId,
-                ["peopleImported"] = 42,
-                ["eventsImported"] = 99
-            });
-        }, jobId, ct);
+                // Simulated work logic
+                await Task.Delay(5000, jobCt);
+            },
+            fileId,
+            jobId,
+            ct);
+
+        // 3. Set single metadata entry (0 Dictionary heap allocations)
+        statusStore.SetMetadata(jobId, "fileId", fileId);
     }
 }
 ```
 
 ### Polling Job Status
 
-Query the status store using the unique `JobId`:
+Query the status store using `string`, `Guid`, or `long` job IDs, and retrieve strongly-typed metadata:
+
 ```csharp
-public JobStatusSnapshot? GetJobStatus(string jobId)
+public JobStatusSnapshot? GetJobStatus(Guid jobId)
 {
-    return statusStore.GetStatus(jobId);
+    var snapshot = statusStore.GetStatus(jobId);
+    if (snapshot != null)
+    {
+        // Retrieve strongly typed metadata values
+        int peopleImported = snapshot.GetValue<int>("peopleImported");
+        double durationMs = snapshot.GetValue<double>("durationMs");
+    }
+    return snapshot;
 }
 ```
 
@@ -92,6 +101,7 @@ public JobStatusSnapshot? GetJobStatus(string jobId)
 
 ```csharp
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging.Abstractions;
 using Jobs.Vector;
 
 var options = Options.Create(new JobsOptions
@@ -103,10 +113,10 @@ var options = Options.Create(new JobsOptions
 
 var timeProvider = TimeProvider.System;
 var statusStore = new InMemoryJobStatusStore(timeProvider, options);
-var jobQueue = new BackgroundJobQueue(statusStore, options);
+var jobQueue = new BackgroundJobQueue(statusStore, options, NullLogger<BackgroundJobQueue>.Instance);
 
-// Enqueue a job directly
-string jobId = Guid.NewGuid().ToString();
+// Enqueue a job directly using long or Guid IDs
+long jobId = 1001;
 await jobQueue.EnqueueAsync(async (ct) =>
 {
     await Task.Delay(1000, ct);

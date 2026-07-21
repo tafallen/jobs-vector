@@ -119,18 +119,19 @@ await jobQueue.EnqueueAsync(async (ct) =>
 
 The library is designed for low overhead and high concurrency. The following benchmark results were recorded on a .NET 8 runtime:
 
-### 1. Throughput Benchmark
-* **Standard Workload:** 100,000 sequential `EnqueueAsync` and `DequeueAsync` operations -> **~917,000 ops/sec**.
-* **Zero-Closure State-Passing:** 100,000 state-passing `EnqueueAsync<TState>` operations -> **~779,000 ops/sec** (with zero hidden C# closure heap allocations).
-* **Impact:** High-frequency scheduling executes with minimal CPU and zero closure allocation pressure.
+### 1. Throughput & Allocation Benchmarks
+* **Standard Workload:** 100,000 sequential `EnqueueAsync` and `DequeueAsync` operations -> **~979,000 ops/sec**.
+* **Numeric `long` Job IDs:** 100,000 `long` ID `EnqueueAsync` operations -> **~988,000 ops/sec**.
+* **Zero-Closure State-Passing:** 100,000 state-passing `EnqueueAsync<TState>` operations -> **~909,000 ops/sec** (with 0 closure class allocations and 0 delegate wrapper allocations).
+* **Zero-Allocation Status Polling:** Polling `GetStatus` on unchanged status entries returns cached references with **0 heap allocations**.
 
 ### 2. Concurrency & Stress Benchmark
 * **Workload:** 5 concurrent enqueuers pushing 1,000 jobs each (5,000 total) processed by 4 concurrent background worker loops with channel draining.
 * **Result:** **100% execution success** under load.
 * **Job Execution Latency:**
-  * **P50 (Median):** ~15.50 ms
-  * **P95:** ~16.11 ms
-  * **P99:** ~16.49 ms
+  * **P50 (Median):** ~15.51 ms
+  * **P95:** ~16.16 ms
+  * **P99:** ~16.60 ms
 
 ---
 

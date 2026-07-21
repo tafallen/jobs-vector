@@ -1,3 +1,8 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -5,7 +10,7 @@ using Microsoft.Extensions.Options;
 namespace Jobs.Vector;
 
 /// <summary>
-/// A hosted service that runs background workers consuming jobs from <see cref="IBackgroundJobQueue"/>.
+/// A hosted service that executes background jobs using a configurable pool of concurrent worker loops.
 /// </summary>
 public class BackgroundJobWorker : BackgroundService
 {
@@ -18,11 +23,6 @@ public class BackgroundJobWorker : BackgroundService
     /// <summary>
     /// Initializes a new instance of the <see cref="BackgroundJobWorker"/> class.
     /// </summary>
-    /// <param name="queue">The queue containing enqueued background jobs.</param>
-    /// <param name="statusStore">The store to record job status transitions.</param>
-    /// <param name="options">The configuration options for background jobs.</param>
-    /// <param name="logger">The logger for diagnostics.</param>
-    /// <param name="timeProvider">The provider used to query timestamps and elapsed time. Defaults to <see cref="TimeProvider.System"/>.</param>
     public BackgroundJobWorker(
         IBackgroundJobQueue queue,
         IJobStatusStore statusStore,
@@ -81,7 +81,7 @@ public class BackgroundJobWorker : BackgroundService
         var timestamp = _timeProvider.GetTimestamp();
         try
         {
-            await item.Job(stoppingToken);
+            await item.ExecuteAsync(stoppingToken);
             var duration = _timeProvider.GetElapsedTime(timestamp);
             _statusStore.SetMetadata(item.JobId, "durationMs", duration.TotalMilliseconds);
             _statusStore.SetStatus(item.JobId, JobStatus.Completed, 100);
@@ -106,5 +106,3 @@ public class BackgroundJobWorker : BackgroundService
         }
     }
 }
-
-

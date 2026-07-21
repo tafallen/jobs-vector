@@ -1,5 +1,8 @@
+using System;
 using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 using System.Threading.Channels;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -37,8 +40,6 @@ public class BackgroundJobQueue : IBackgroundJobQueue
     /// <inheritdoc />
     public ValueTask EnqueueAsync(Func<CancellationToken, Task> job, string jobId, CancellationToken ct = default)
     {
-        // Set the status to Queued BEFORE writing to the channel, ensuring workers that process
-        // the job instantly do not have their status updates overwritten by this thread.
         _statusStore.SetStatus(jobId, JobStatus.Queued);
 
         var item = new JobItem(jobId, job);
@@ -56,7 +57,7 @@ public class BackgroundJobQueue : IBackgroundJobQueue
     {
         _statusStore.SetStatus(jobId, JobStatus.Queued);
 
-        var item = new JobItem(jobId, token => job(state, token));
+        var item = new StateJobItem<TState>(jobId, job, state);
         if (_channel.Writer.TryWrite(item))
         {
             _logger.LogInformation("Background job {JobId} successfully enqueued", jobId);
@@ -85,4 +86,3 @@ public class BackgroundJobQueue : IBackgroundJobQueue
         return _channel.Reader.TryRead(out item);
     }
 }
-

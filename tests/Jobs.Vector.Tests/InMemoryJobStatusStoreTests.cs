@@ -219,6 +219,19 @@ public class InMemoryJobStatusStoreTests
         Assert.False(snapshot.GetValue<bool>("nonexistentKey"));
         Assert.Null(snapshot.GetValue<string>("boolVal")); // wrong type
     }
+
+    [Fact]
+    public void GetStatus_CalledRepeatedly_ReturnsSameCachedReference()
+    {
+        var store = new InMemoryJobStatusStore();
+        store.SetStatus("job1", JobStatus.Processing, 50);
+
+        var first = store.GetStatus("job1");
+        var second = store.GetStatus("job1");
+
+        Assert.NotNull(first);
+        Assert.Same(first, second);
+    }
 }
 
 

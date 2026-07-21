@@ -14,6 +14,7 @@ public class InMemoryJobStatusStore : IJobStatusStore
     private sealed class Entry
     {
         private readonly object _lock = new();
+        private JobStatusSnapshot? _cachedSnapshot;
 
         public JobStatus Status { get; private set; }
         public int Progress { get; private set; }
@@ -34,7 +35,7 @@ public class InMemoryJobStatusStore : IJobStatusStore
         {
             lock (_lock)
             {
-                return new JobStatusSnapshot(Status, Progress, Error, Metadata);
+                return _cachedSnapshot ??= new JobStatusSnapshot(Status, Progress, Error, Metadata);
             }
         }
 
@@ -46,6 +47,7 @@ public class InMemoryJobStatusStore : IJobStatusStore
                 Progress = progress;
                 Error = error;
                 UpdatedAt = updatedAt;
+                _cachedSnapshot = null;
             }
         }
 
@@ -55,6 +57,7 @@ public class InMemoryJobStatusStore : IJobStatusStore
             {
                 Metadata = metadata;
                 UpdatedAt = updatedAt;
+                _cachedSnapshot = null;
             }
         }
     }

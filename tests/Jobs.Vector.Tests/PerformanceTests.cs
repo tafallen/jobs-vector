@@ -44,6 +44,30 @@ public class PerformanceTests
     }
 
     [Fact]
+    public async Task RunPerformanceTest_1b_ZeroClosureThroughput()
+    {
+        var store = new InMemoryJobStatusStore();
+        var queue = new BackgroundJobQueue(store, Options.Create(new JobsOptions { QueueCapacity = 10000 }), NullLogger<BackgroundJobQueue>.Instance);
+
+        const int iterations = 100000;
+        var stopwatch = Stopwatch.StartNew();
+
+        for (int i = 0; i < iterations; i++)
+        {
+            await queue.EnqueueAsync(static (state, ct) => Task.CompletedTask, i, $"job-{i}");
+            await queue.DequeueAsync(CancellationToken.None);
+        }
+
+        stopwatch.Stop();
+        var elapsedMs = stopwatch.ElapsedMilliseconds;
+        var opsPerSecond = (double)iterations / stopwatch.Elapsed.TotalSeconds;
+
+        _output.WriteLine($"--- Performance Test 1b: Zero-Closure State-Passing Throughput ---");
+        _output.WriteLine($"Processed {iterations} state-passing enqueues/dequeues in {elapsedMs} ms.");
+        _output.WriteLine($"Throughput: {opsPerSecond:F2} ops/sec.");
+    }
+
+    [Fact]
     public async Task RunPerformanceTest_2_HighConcurrencyContention()
     {
         var store = new InMemoryJobStatusStore();

@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -28,6 +29,8 @@ public class BackgroundJobQueue : IBackgroundJobQueue
         _channel = Channel.CreateBounded<JobItem>(new BoundedChannelOptions(_queueCapacity)
         {
             FullMode = BoundedChannelFullMode.Wait,
+            SingleReader = options.Value.Workers == 1,
+            AllowSynchronousContinuations = false
         });
     }
 
@@ -48,6 +51,21 @@ public class BackgroundJobQueue : IBackgroundJobQueue
         return EnqueueAsyncSlowPath(item, jobId, ct);
     }
 
+    /// <inheritdoc />
+    public ValueTask EnqueueAsync<TState>(Func<TState, CancellationToken, Task> job, TState state, string jobId, CancellationToken ct = default)
+    {
+        _statusStore.SetStatus(jobId, JobStatus.Queued);
+
+        var item = new JobItem(jobId, token => job(state, token));
+        if (_channel.Writer.TryWrite(item))
+        {
+            _logger.LogInformation("Background job {JobId} successfully enqueued", jobId);
+            return default;
+        }
+
+        return EnqueueAsyncSlowPath(item, jobId, ct);
+    }
+
     private async ValueTask EnqueueAsyncSlowPath(JobItem item, string jobId, CancellationToken ct)
     {
         _logger.LogWarning("Job queue is at capacity ({QueueCapacity}). Applying backpressure to enqueuing thread for job {JobId}", _queueCapacity, jobId);
@@ -59,6 +77,12 @@ public class BackgroundJobQueue : IBackgroundJobQueue
     public ValueTask<JobItem> DequeueAsync(CancellationToken ct)
     {
         return _channel.Reader.ReadAsync(ct);
+    }
+
+    /// <inheritdoc />
+    public bool TryDequeue([NotNullWhen(true)] out JobItem? item)
+    {
+        return _channel.Reader.TryRead(out item);
     }
 }
 

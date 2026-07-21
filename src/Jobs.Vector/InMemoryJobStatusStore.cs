@@ -149,6 +149,53 @@ public class InMemoryJobStatusStore : IJobStatusStore
         }
     }
 
+    /// <inheritdoc />
+    public void SetMetadata(string jobId, string key, object value)
+    {
+        if (string.IsNullOrEmpty(key))
+        {
+            return;
+        }
+
+        var now = _timeProvider.GetUtcNow();
+        if (_entries.TryGetValue(jobId, out var existing))
+        {
+            lock (existing)
+            {
+                var merged = Merge(existing.Metadata, key, value);
+                existing.UpdateMetadata(merged, now);
+            }
+        }
+        else
+        {
+            var initialMetadata = new Dictionary<string, object> { [key] = value };
+            var newEntry = new Entry(JobStatus.Processing, 0, null, initialMetadata, now);
+            if (_entries.TryAdd(jobId, newEntry))
+            {
+                _evictionQueue.Enqueue((jobId, now + _retention));
+            }
+            else
+            {
+                if (_entries.TryGetValue(jobId, out existing))
+                {
+                    lock (existing)
+                    {
+                        var merged = Merge(existing.Metadata, key, value);
+                        existing.UpdateMetadata(merged, now);
+                    }
+                }
+            }
+        }
+    }
+
+    private static IReadOnlyDictionary<string, object> Merge(
+        IReadOnlyDictionary<string, object> existing, string key, object value)
+    {
+        var merged = new Dictionary<string, object>(existing);
+        merged[key] = value;
+        return merged;
+    }
+
     private static IReadOnlyDictionary<string, object> Merge(
         IReadOnlyDictionary<string, object> existing, IReadOnlyDictionary<string, object> updates)
     {

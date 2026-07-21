@@ -23,6 +23,15 @@ public interface IJobStatusStore
     void SetMetadata(string jobId, IReadOnlyDictionary<string, object> metadata);
 
     /// <summary>
+    /// Merges a single key/value pair into the job's metadata dictionary without disturbing its status, progress, or error.
+    /// Bypasses dictionary instantiation for single-item metadata updates.
+    /// </summary>
+    /// <param name="jobId">A unique identifier for the job.</param>
+    /// <param name="key">The metadata key to set.</param>
+    /// <param name="value">The metadata value to set.</param>
+    void SetMetadata(string jobId, string key, object value);
+
+    /// <summary>
     /// Retrieves a snapshot of the job's status and metadata, performing lazy eviction if the job has expired.
     /// </summary>
     /// <param name="jobId">A unique identifier for the job.</param>

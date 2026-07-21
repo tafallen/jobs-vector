@@ -49,7 +49,7 @@ public class BackgroundJobWorker : BackgroundService
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            JobItem item;
+            JobItem? item;
             try
             {
                 item = await _queue.DequeueAsync(stoppingToken);
@@ -59,41 +59,50 @@ public class BackgroundJobWorker : BackgroundService
                 return;
             }
 
-            _logger.LogInformation("Background job {JobId} started processing", item.JobId);
-            _statusStore.SetStatus(item.JobId, JobStatus.Processing);
-            var timestamp = _timeProvider.GetTimestamp();
-            try
+            if (!await ProcessJobItemAsync(item, stoppingToken))
             {
-                await item.Job(stoppingToken);
-                var duration = _timeProvider.GetElapsedTime(timestamp);
-                _statusStore.SetMetadata(item.JobId, new Dictionary<string, object>
-                {
-                    ["durationMs"] = duration.TotalMilliseconds
-                });
-                _statusStore.SetStatus(item.JobId, JobStatus.Completed, 100);
-                _logger.LogInformation("Background job {JobId} completed successfully", item.JobId);
-            }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                var duration = _timeProvider.GetElapsedTime(timestamp);
-                _logger.LogWarning("Background job {JobId} cancelled by shutdown while processing", item.JobId);
-                _statusStore.SetMetadata(item.JobId, new Dictionary<string, object>
-                {
-                    ["durationMs"] = duration.TotalMilliseconds
-                });
-                _statusStore.SetStatus(item.JobId, JobStatus.Failed, error: "Cancelled by shutdown.");
                 return;
             }
-            catch (Exception ex)
+
+            while (!stoppingToken.IsCancellationRequested && _queue.TryDequeue(out item))
             {
-                var duration = _timeProvider.GetElapsedTime(timestamp);
-                _logger.LogError(ex, "Background job {JobId} failed", item.JobId);
-                _statusStore.SetMetadata(item.JobId, new Dictionary<string, object>
+                if (!await ProcessJobItemAsync(item, stoppingToken))
                 {
-                    ["durationMs"] = duration.TotalMilliseconds
-                });
-                _statusStore.SetStatus(item.JobId, JobStatus.Failed, error: ex.ToString());
+                    return;
+                }
             }
+        }
+    }
+
+    private async Task<bool> ProcessJobItemAsync(JobItem item, CancellationToken stoppingToken)
+    {
+        _logger.LogInformation("Background job {JobId} started processing", item.JobId);
+        _statusStore.SetStatus(item.JobId, JobStatus.Processing);
+        var timestamp = _timeProvider.GetTimestamp();
+        try
+        {
+            await item.Job(stoppingToken);
+            var duration = _timeProvider.GetElapsedTime(timestamp);
+            _statusStore.SetMetadata(item.JobId, "durationMs", duration.TotalMilliseconds);
+            _statusStore.SetStatus(item.JobId, JobStatus.Completed, 100);
+            _logger.LogInformation("Background job {JobId} completed successfully", item.JobId);
+            return true;
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            var duration = _timeProvider.GetElapsedTime(timestamp);
+            _logger.LogWarning("Background job {JobId} cancelled by shutdown while processing", item.JobId);
+            _statusStore.SetMetadata(item.JobId, "durationMs", duration.TotalMilliseconds);
+            _statusStore.SetStatus(item.JobId, JobStatus.Failed, error: "Cancelled by shutdown.");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            var duration = _timeProvider.GetElapsedTime(timestamp);
+            _logger.LogError(ex, "Background job {JobId} failed", item.JobId);
+            _statusStore.SetMetadata(item.JobId, "durationMs", duration.TotalMilliseconds);
+            _statusStore.SetStatus(item.JobId, JobStatus.Failed, error: ex.ToString());
+            return true;
         }
     }
 }

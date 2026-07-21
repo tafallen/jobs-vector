@@ -120,17 +120,17 @@ await jobQueue.EnqueueAsync(async (ct) =>
 The library is designed for low overhead and high concurrency. The following benchmark results were recorded on a .NET 8 runtime:
 
 ### 1. Throughput Benchmark
-* **Workload:** 100,000 sequential `EnqueueAsync` and `DequeueAsync` operations.
-* **Throughput:** **~946,000 operations / second**.
-* **Impact:** The backing `System.Threading.Channels` queue introduces minimal latency, enabling high-frequency scheduling without CPU bottlenecks.
+* **Standard Workload:** 100,000 sequential `EnqueueAsync` and `DequeueAsync` operations -> **~917,000 ops/sec**.
+* **Zero-Closure State-Passing:** 100,000 state-passing `EnqueueAsync<TState>` operations -> **~779,000 ops/sec** (with zero hidden C# closure heap allocations).
+* **Impact:** High-frequency scheduling executes with minimal CPU and zero closure allocation pressure.
 
 ### 2. Concurrency & Stress Benchmark
-* **Workload:** 5 concurrent enqueuers pushing 1,000 jobs each (5,000 total) processed by 4 concurrent background worker loops.
+* **Workload:** 5 concurrent enqueuers pushing 1,000 jobs each (5,000 total) processed by 4 concurrent background worker loops with channel draining.
 * **Result:** **100% execution success** under load.
 * **Job Execution Latency:**
-  * **P50 (Median):** ~15.30 ms
-  * **P95:** ~16.75 ms
-  * **P99:** ~17.62 ms
+  * **P50 (Median):** ~15.50 ms
+  * **P95:** ~16.11 ms
+  * **P99:** ~16.49 ms
 
 ---
 

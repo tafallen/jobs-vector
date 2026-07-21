@@ -74,7 +74,7 @@ public class BackgroundJobWorker : BackgroundService
         }
     }
 
-    private async Task<bool> ProcessJobItemAsync(JobItem item, CancellationToken stoppingToken)
+    private async ValueTask<bool> ProcessJobItemAsync(JobItem item, CancellationToken stoppingToken)
     {
         _logger.LogInformation("Background job {JobId} started processing", item.JobId);
         _statusStore.SetStatus(item.JobId, JobStatus.Processing);

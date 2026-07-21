@@ -43,4 +43,3 @@ public interface IJobStatusStore
     /// </summary>
     void PruneExpired();
 }
-

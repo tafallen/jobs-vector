@@ -59,7 +59,7 @@ public class InMemoryJobStatusStore : IJobStatusStore
         }
     }
 
-    private readonly ConcurrentDictionary<string, Entry> _entries = new();
+    private readonly ConcurrentDictionary<string, Entry> _entries = new(Environment.ProcessorCount * 2, 1024, StringComparer.Ordinal);
     private readonly ConcurrentQueue<(string JobId, DateTimeOffset Expiry)> _evictionQueue = new();
     private readonly TimeProvider _timeProvider;
     private readonly TimeSpan _retention;

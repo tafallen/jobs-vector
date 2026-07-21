@@ -41,5 +41,3 @@ public interface IBackgroundJobQueue
     /// <returns><see langword="true"/> if a job item was successfully dequeued; otherwise, <see langword="false"/>.</returns>
     bool TryDequeue([NotNullWhen(true)] out JobItem? item);
 }
-
-

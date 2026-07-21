@@ -68,6 +68,30 @@ public class PerformanceTests
     }
 
     [Fact]
+    public async Task RunPerformanceTest_1c_LongJobIdThroughput()
+    {
+        var store = new InMemoryJobStatusStore();
+        var queue = new BackgroundJobQueue(store, Options.Create(new JobsOptions { QueueCapacity = 10000 }), NullLogger<BackgroundJobQueue>.Instance);
+
+        const int iterations = 100000;
+        var stopwatch = Stopwatch.StartNew();
+
+        for (long i = 0; i < iterations; i++)
+        {
+            await queue.EnqueueAsync(static (state, ct) => Task.CompletedTask, i, i);
+            await queue.DequeueAsync(CancellationToken.None);
+        }
+
+        stopwatch.Stop();
+        var elapsedMs = stopwatch.ElapsedMilliseconds;
+        var opsPerSecond = (double)iterations / stopwatch.Elapsed.TotalSeconds;
+
+        _output.WriteLine($"--- Performance Test 1c: Numeric Long Job ID Throughput ---");
+        _output.WriteLine($"Processed {iterations} numeric job ID enqueues/dequeues in {elapsedMs} ms.");
+        _output.WriteLine($"Throughput: {opsPerSecond:F2} ops/sec.");
+    }
+
+    [Fact]
     public async Task RunPerformanceTest_2_HighConcurrencyContention()
     {
         var store = new InMemoryJobStatusStore();

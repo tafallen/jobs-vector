@@ -122,9 +122,9 @@ public class BackgroundJobWorker : BackgroundService
                     (_queue as BackgroundJobQueue)?.RemoveJobCancellationToken(item.JobId);
                     return true;
                 }
-                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested && !jobToken.IsCancellationRequested)
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {
-                    // Shutdown-triggered cancellation — do not retry
+                    // Shutdown-triggered cancellation — takes priority, do not retry
                     var duration = _timeProvider.GetElapsedTime(timestamp);
                     _logger.LogWarning("Background job {JobId} cancelled by shutdown while processing", item.JobId);
                     _statusStore.SetMetadata(item.JobId, "durationMs", duration.TotalMilliseconds);
@@ -132,7 +132,7 @@ public class BackgroundJobWorker : BackgroundService
                     activity?.SetStatus(ActivityStatusCode.Error, "Cancelled by shutdown.");
                     return false;
                 }
-                catch (OperationCanceledException) when (jobToken.IsCancellationRequested && !stoppingToken.IsCancellationRequested)
+                catch (OperationCanceledException) when (jobToken.IsCancellationRequested)
                 {
                     // Per-job cancellation — treat as failed, do not retry
                     var duration = _timeProvider.GetElapsedTime(timestamp);

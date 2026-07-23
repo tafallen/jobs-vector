@@ -29,7 +29,18 @@ public static class JobsServiceCollectionExtensions
 
         services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<IJobStatusStore, InMemoryJobStatusStore>();
-        services.AddSingleton<IBackgroundJobQueue, BackgroundJobQueue>();
+        services.AddSingleton<BackgroundJobQueue>();
+        services.AddSingleton<IBackgroundJobQueue>(sp =>
+        {
+            // Resolve the concrete queue first, then wire in the scheduler
+            // after both are constructed to break the circular dependency.
+            var queue = sp.GetRequiredService<BackgroundJobQueue>();
+            var scheduler = sp.GetRequiredService<DelayedJobScheduler>();
+            queue.SetScheduler(scheduler);
+            return queue;
+        });
+        services.AddSingleton<DelayedJobScheduler>();
+        services.AddHostedService(sp => sp.GetRequiredService<DelayedJobScheduler>());
         services.AddHostedService<BackgroundJobWorker>();
         services.AddHostedService<JobStatusSweepWorker>();
 

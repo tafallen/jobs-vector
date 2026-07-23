@@ -33,5 +33,20 @@ public class JobsOptions
     /// StatusRetention, independent of GetStatus lookup traffic.
     /// </summary>
     public TimeSpan SweepInterval { get; set; } = TimeSpan.FromMinutes(15);
+
+    /// <summary>
+    /// Gets or sets the default maximum number of retries for failed jobs. Defaults to 0.
+    /// </summary>
+    public int DefaultMaxRetries { get; set; } = 0;
+
+    /// <summary>
+    /// Gets or sets the default base backoff retry delay.
+    /// </summary>
+    public TimeSpan DefaultRetryBackoff { get; set; } = TimeSpan.Zero;
+
+    /// <summary>
+    /// Gets or sets whether default retries should use exponential backoff instead of linear.
+    /// </summary>
+    public bool DefaultRetryExponential { get; set; } = false;
 }
 

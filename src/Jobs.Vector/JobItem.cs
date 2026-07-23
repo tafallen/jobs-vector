@@ -20,6 +20,26 @@ public class JobItem
     public Func<CancellationToken, Task> Job => _delegateJob ?? ExecuteAsync;
 
     /// <summary>
+    /// Gets or sets the maximum number of retries.
+    /// </summary>
+    public int MaxRetries { get; set; }
+
+    /// <summary>
+    /// Gets or sets the backoff retry delay.
+    /// </summary>
+    public TimeSpan RetryBackoff { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether to use exponential backoff instead of linear.
+    /// </summary>
+    public bool RetryExponential { get; set; }
+
+    /// <summary>
+    /// Gets or sets the current attempt count.
+    /// </summary>
+    public int AttemptCount { get; set; }
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="JobItem"/> class.
     /// </summary>
     /// <param name="jobId">The unique identifier of the job.</param>

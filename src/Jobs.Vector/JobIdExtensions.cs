@@ -105,4 +105,52 @@ public static class JobIdExtensions
     {
         return store.GetStatus(jobId.ToString("N"));
     }
+
+    /// <summary>
+    /// Enqueues a delayed job delegate using a numeric job ID.
+    /// </summary>
+    public static ValueTask EnqueueDelayedAsync(this IBackgroundJobQueue queue, Func<CancellationToken, Task> job, TimeSpan delay, long jobId, CancellationToken ct = default)
+    {
+        return queue.EnqueueDelayedAsync(job, delay, jobId.ToString(), ct);
+    }
+
+    /// <summary>
+    /// Enqueues a delayed job delegate using a Guid job ID.
+    /// </summary>
+    public static ValueTask EnqueueDelayedAsync(this IBackgroundJobQueue queue, Func<CancellationToken, Task> job, TimeSpan delay, Guid jobId, CancellationToken ct = default)
+    {
+        return queue.EnqueueDelayedAsync(job, delay, jobId.ToString("N"), ct);
+    }
+
+    /// <summary>
+    /// Enqueues a delayed state-passing job delegate using a numeric job ID.
+    /// </summary>
+    public static ValueTask EnqueueDelayedAsync<TState>(this IBackgroundJobQueue queue, Func<TState, CancellationToken, Task> job, TState state, TimeSpan delay, long jobId, CancellationToken ct = default)
+    {
+        return queue.EnqueueDelayedAsync(job, state, delay, jobId.ToString(), ct);
+    }
+
+    /// <summary>
+    /// Enqueues a delayed state-passing job delegate using a Guid job ID.
+    /// </summary>
+    public static ValueTask EnqueueDelayedAsync<TState>(this IBackgroundJobQueue queue, Func<TState, CancellationToken, Task> job, TState state, TimeSpan delay, Guid jobId, CancellationToken ct = default)
+    {
+        return queue.EnqueueDelayedAsync(job, state, delay, jobId.ToString("N"), ct);
+    }
+
+    /// <summary>
+    /// Cancels a job by its numeric job ID.
+    /// </summary>
+    public static bool CancelJob(this IBackgroundJobQueue queue, long jobId)
+    {
+        return queue.CancelJob(jobId.ToString());
+    }
+
+    /// <summary>
+    /// Cancels a job by its Guid job ID.
+    /// </summary>
+    public static bool CancelJob(this IBackgroundJobQueue queue, Guid jobId)
+    {
+        return queue.CancelJob(jobId.ToString("N"));
+    }
 }
